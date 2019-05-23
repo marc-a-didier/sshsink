@@ -32,32 +32,35 @@ class SSHSink
         begin
             while !@leave do
                 Thread.start(tcp_server.accept) do |sock|
-                    retries = 0
-                    log.info("--> #{sock.peeraddr}")
                     begin
-                        msg = sock.recv_nonblock(32000).chomp.scrub
-                        log.info(msg)
-                    rescue IO::WaitReadable
-                        IO.select([sock], nil, nil, 10)
-                        (retries += 1) < 6 ? retry : log.info("Too much retries, leaving wait readable loop for ip #{sock.peeraddr.last}")
-                    rescue Errno::ECONNRESET
-                    end
-                    if sock.peeraddr.last.match(/^127|^192\.168/)
-                        self.send(msgs[msg]) if msgs[msg] && self.respond_to?(msgs[msg])
-                    else
-                        sock.puts(msgs['Welcome'])
-                        @mutex.synchronize do
-                            if @addrs[sock.peeraddr.last]
-                                log.info("--- Skipping counter strike against #{sock.peeraddr.last}")
-                                @addrs[sock.peeraddr.last] += 1
-                            else
-                                @addrs[sock.peeraddr.last] = 1
-                                log.info("+++ Launching counter strike against #{sock.peeraddr.last}")
-                                Process.detach(Process.fork { Process.exec("./sshcounterstrike.rb #{sock.peeraddr.last}") })
+                        retries = 0
+                        begin
+                            log.info("--> #{sock.peeraddr}")
+                            msg = sock.recv_nonblock(32000).chomp.scrub
+                            log.info(msg)
+                        rescue IO::WaitReadable
+                            IO.select([sock], nil, nil, 10)
+                            (retries += 1) < 6 ? retry : log.info("Too much retries, leaving wait readable loop for ip #{sock.peeraddr.last}")
+                        end
+                        if sock.peeraddr.last.match(/^127|^192\.168/)
+                            self.send(msgs[msg]) if msgs[msg] && self.respond_to?(msgs[msg])
+                        else
+                            sock.puts(msgs['Welcome'])
+                            @mutex.synchronize do
+                                if @addrs[sock.peeraddr.last]
+                                    log.info("--- Skipping counter strike against #{sock.peeraddr.last}")
+                                    @addrs[sock.peeraddr.last] += 1
+                                else
+                                    @addrs[sock.peeraddr.last] = 1
+                                    log.info("+++ Launching counter strike against #{sock.peeraddr.last}")
+                                    Process.detach(Process.fork { Process.exec("./sshcounterstrike.rb #{sock.peeraddr.last}") })
+                                end
                             end
                         end
+                        sock.close
+                    rescue Errno::ECONNRESET, Errno::ENOTCONN, Errno::EPIPE
+                        log.info("*** Connection lost")
                     end
-                    sock.close
                 end
             end
         rescue Interrupt
