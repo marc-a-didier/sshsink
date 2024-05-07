@@ -52,8 +52,8 @@ begin
                     end
                 rescue Net::SSH::AuthenticationFailed => ex
                     # No more logging here
-                rescue Errno::ECONNREFUSED, Errno::ECONNRESET, Net::SSH::ConnectionTimeout => ex
-                    sink_log.info("#{CS_HEADER}  #{ex.class.to_s} at IP #{ip}:#{port}")
+                rescue SystemCallError => x7
+                    sink_log.info("#{CS_HEADER}  #{x7.class.to_s} at IP #{ip}:#{port}")
                     port = cfg['ports'].shift
                     raise RuntimeError.new('leave loops') unless port
                 end
